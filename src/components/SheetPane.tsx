@@ -4,6 +4,11 @@ import { useEffect, useRef } from "react";
 import { mergeRegions } from "@/lib/mapping";
 import type { AnswerBlock, PageImage, Region } from "@/lib/types";
 
+/** Blocks with zero-width space text are extra_box spatial markers, not real answer content. */
+function hasRealText(b: AnswerBlock): boolean {
+  return b.text.trim().replace(/\u200b/g, "").length > 0;
+}
+
 export default function SheetPane(props: {
   pages: PageImage[];
   blocks: AnswerBlock[];
@@ -49,7 +54,12 @@ export default function SheetPane(props: {
 
       <div className="vd-pages">
         {props.pages.map((page) => {
-          const pageBlocks = props.blocks.filter((b) => b.page === page.index && b.text);
+          // Only show blocks that have real transcribed text as interactive targets.
+          // extra_box sentinel blocks (zero-width space) are included in the
+          // activeRegions highlight overlay but are NOT shown as idle click targets.
+          const pageBlocks = props.blocks.filter(
+            (b) => b.page === page.index && hasRealText(b),
+          );
           const pageActive = activeRegions.filter((r) => r.page === page.index);
           const idle = pageBlocks.filter((b) => !activeSet.has(b.id));
 

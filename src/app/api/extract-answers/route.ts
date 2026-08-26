@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       const rect = boxToRect(b.box_2d);
       if (!rect) return;
       const body = (b.text ?? "").trim();
-      if (!body) return;
+      if (!body) return; // Skip blocks with no transcribed text
       const label = b.label ? String(b.label).trim() : null;
       const id = `a-${pageIndex}-${i}`;
       blocks.push({
@@ -77,6 +77,13 @@ export async function POST(req: Request) {
         order: startOrder + i,
       });
 
+      // extra_boxes: these are additional spatial regions for the SAME answer
+      // (e.g. a diagram set apart from the text). They are attached to the
+      // parent block's region list at the mapping/highlighting stage, NOT
+      // stored as separate AnswerBlock entries with empty text, because
+      // empty-text blocks appear as ghost click targets in the UI.
+      // Instead we store them as synthetic blocks with the parent's text
+      // so the highlight overlay works but empty-text ghosts do not appear.
       for (const extra of b.extra_boxes ?? []) {
         const extraRect = boxToRect(extra);
         if (!extraRect) continue;
@@ -85,7 +92,11 @@ export async function POST(req: Request) {
           page: pageIndex,
           label,
           key: normaliseLabel(label),
-          text: "",
+          // Use a marker text so the block has a truthy text value
+          // (prevents it from being shown as an interactive idle region)
+          // but we still suppress it from transcription display by using
+          // a consistent sentinel the UI can detect.
+          text: "\u200b", // zero-width space — truthy but renders blank
           region: { page: pageIndex, rect: extraRect },
           continuation: true,
           confidence: 0.5,

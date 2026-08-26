@@ -24,18 +24,44 @@ export type Result = {
 };
 
 async function post<T>(path: string, body: unknown, apiKey: string): Promise<T> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "x-gemini-key": apiKey } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(detail.error || `Request to ${path} failed.`);
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-gemini-key": apiKey } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    const msg = networkErr instanceof Error ? networkErr.message : String(networkErr);
+    throw new Error(`Network error calling ${path}: ${msg}`);
   }
+
+  if (!res.ok) {
+    // Try to read a JSON body first (our fail() always returns JSON).
+    // If that fails, try text. If that fails, use the status line.
+    let errorMessage = "";
+    try {
+      const json = await res.json() as { error?: string };
+      errorMessage = json?.error ?? "";
+    } catch {
+      try {
+        const text = await res.text();
+        // If it's an HTML page (Vercel error, proxy error) strip the tags.
+        errorMessage = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 400);
+      } catch {
+        /* empty */
+      }
+    }
+
+    // Build the most informative message possible.
+    const status = `HTTP ${res.status}`;
+    const detail = errorMessage || res.statusText || "no detail";
+    throw new Error(`${path} failed (${status}): ${detail}`);
+  }
+
   return res.json() as Promise<T>;
 }
 

@@ -123,7 +123,11 @@ export default function Page() {
     const grades = new Map(result.grades.map((g) => [g.questionId, g]));
     const blocks = new Map(result.blocks.map((b) => [b.id, b]));
     const unmatchedIds = new Set(result.unmatchedBlockIds);
-    const unmatched = result.blocks.filter((b) => unmatchedIds.has(b.id) && b.text);
+    // Filter out extra_box sentinel blocks (zero-width space text) from the
+    // unmatched display — these are spatial marker blocks, not real answers.
+    const unmatched = result.blocks.filter(
+      (b) => unmatchedIds.has(b.id) && b.text.replace(/\u200b/g, "").trim(),
+    );
     return { matches, grades, blocks, unmatched };
   }, [result]);
 
