@@ -1,8 +1,10 @@
-const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const BASE =
+  "https://generativelanguage.googleapis.com/v1beta/models";
 
-// Stable production default.
-// Can be overridden in Vercel with GEMINI_MODEL.
-const PRIMARY = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+// Use the model configured in Vercel.
+// If nothing is configured, use Gemini 3.7 Flash.
+const PRIMARY =
+  process.env.GEMINI_MODEL || "gemini-3.7-flash";
 
 const FALLBACKS = Array.from(
   new Set([
@@ -18,7 +20,9 @@ const FALLBACKS = Array.from(
 );
 
 export type Part =
-  | { text: string }
+  | {
+      text: string;
+    }
   | {
       inline_data: {
         mime_type: string;
@@ -27,10 +31,13 @@ export type Part =
     };
 
 export function imagePart(dataUrl: string): Part {
-  const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+  const match =
+    /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
 
   if (!match) {
-    throw new Error("Page image was not a base64 data URL.");
+    throw new Error(
+      "Page image was not a base64 data URL.",
+    );
   }
 
   return {
@@ -42,8 +49,10 @@ export function imagePart(dataUrl: string): Part {
 }
 
 export function resolveKey(req: Request): string {
+  // First check for a key explicitly supplied by the app.
   const supplied = req.headers.get("x-gemini-key");
 
+  // Otherwise use the Vercel environment variable.
   const key =
     (supplied && supplied.trim()) ||
     process.env.GEMINI_API_KEY;
@@ -65,26 +74,42 @@ function explainGeminiError(
   detail: string,
   model: string,
 ): string {
-  const compact = detail.replace(/\s+/g, " ").slice(0, 500);
+  const compact = detail
+    .replace(/\s+/g, " ")
+    .slice(0, 700);
 
   if (status === 400) {
-    return `Gemini rejected the request for ${model}. ${compact}`;
+    return (
+      `Gemini rejected the request for ${model}. ` +
+      compact
+    );
   }
 
   if (status === 401 || status === 403) {
-    return "Gemini rejected the API key. Check that the key is valid and Gemini API access is enabled.";
+    return (
+      "Gemini rejected the API key. " +
+      "Check that the key is valid and that the Gemini API is enabled."
+    );
   }
 
   if (status === 404) {
-    return `Gemini model ${model} is unavailable for this API key.`;
+    return (
+      `Gemini model ${model} is unavailable for this API key.`
+    );
   }
 
   if (status === 429) {
-    return "Gemini rate limit or quota reached. Wait a moment and try again.";
+    return (
+      "Gemini rate limit or quota reached. " +
+      "Wait a moment and try again."
+    );
   }
 
   if (status >= 500) {
-    return `Gemini service error (${status}). Please try again.`;
+    return (
+      `Gemini service error (${status}). ` +
+      "Please try again."
+    );
   }
 
   return `Gemini ${status}: ${compact}`;
@@ -96,9 +121,22 @@ export async function callGemini(opts: {
   parts: Part[];
   maxOutputTokens?: number;
 }): Promise<string> {
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT add temperature/topP/topK here when using
+   * Gemini 3.x models.
+   *
+   * This was the problem in the previous version.
+   */
+
   const body = JSON.stringify({
     system_instruction: {
-      parts: [{ text: opts.system }],
+      parts: [
+        {
+          text: opts.system,
+        },
+      ],
     },
 
     contents: [
@@ -109,10 +147,9 @@ export async function callGemini(opts: {
     ],
 
     generationConfig: {
-      temperature: 0,
-      topP: 0.9,
       responseMimeType: "application/json",
-      maxOutputTokens: opts.maxOutputTokens ?? 8192,
+      maxOutputTokens:
+        opts.maxOutputTokens ?? 8192,
     },
   });
 
@@ -126,13 +163,18 @@ export async function callGemini(opts: {
         response = await fetch(
           `${BASE}/${encodeURIComponent(
             model,
-          )}:generateContent?key=${encodeURIComponent(opts.apiKey)}`,
+          )}:generateContent?key=${encodeURIComponent(
+            opts.apiKey,
+          )}`,
           {
             method: "POST",
+
             headers: {
               "Content-Type": "application/json",
             },
+
             body,
+
             cache: "no-store",
           },
         );
@@ -145,9 +187,13 @@ export async function callGemini(opts: {
           }`;
 
         await sleep(800 * (attempt + 1));
+
         continue;
       }
 
+      /*
+       * Successful Gemini response
+       */
       if (response.ok) {
         const json = await response.json();
 
@@ -155,7 +201,10 @@ export async function callGemini(opts: {
           json?.candidates?.[0]?.content?.parts ?? [];
 
         const text = parts
-          .map((part: { text?: string }) => part.text ?? "")
+          .map(
+            (part: { text?: string }) =>
+              part.text ?? "",
+          )
           .join("");
 
         if (text.trim()) {
@@ -172,6 +221,9 @@ export async function callGemini(opts: {
         break;
       }
 
+      /*
+       * Gemini returned an HTTP error.
+       */
       const detail = await response.text();
 
       lastError = explainGeminiError(
@@ -180,26 +232,38 @@ export async function callGemini(opts: {
         model,
       );
 
-      // Try another model if this model is unavailable.
+      /*
+       * Model doesn't exist / isn't available.
+       * Move to the next model.
+       */
       if (response.status === 404) {
         break;
       }
 
-      // Some request formats can be model-specific.
+      /*
+       * Request format isn't accepted by this model.
+       * Try the next model.
+       */
       if (response.status === 400) {
         break;
       }
 
-      // Retry temporary failures.
+      /*
+       * Temporary quota/server issue.
+       * Retry.
+       */
       if (
         response.status === 429 ||
         response.status >= 500
       ) {
         await sleep(1200 * (attempt + 1));
+
         continue;
       }
 
-      // Authentication failures should not be retried.
+      /*
+       * Authentication errors should not be retried.
+       */
       throw new Error(lastError);
     }
   }
@@ -211,32 +275,43 @@ export async function callGemini(opts: {
 }
 
 /**
- * Gemini normally returns clean JSON because responseMimeType
- * is set to application/json.
+ * Gemini is instructed to return JSON.
  *
- * This fallback also handles responses wrapped in markdown fences
- * or short explanatory text.
+ * Sometimes models still wrap JSON inside markdown
+ * or add a short sentence. This function attempts to
+ * recover the JSON safely.
  */
 export function parseJson<T>(text: string): T {
   const cleaned = text
     .replace(/```(?:json)?/gi, "")
     .trim();
 
+  /*
+   * First try the complete response.
+   */
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    // Try to recover JSON from surrounding text.
+    // Continue to recovery.
   }
 
+  /*
+   * Find the beginning of a JSON object/array.
+   */
   const start = cleaned.search(/[[{]/);
 
   if (start >= 0) {
+    /*
+     * Try progressively shorter endings until valid JSON
+     * is found.
+     */
     for (
       let end = cleaned.length;
       end > start;
       end--
     ) {
       const slice = cleaned.slice(start, end);
+
       const last = slice[slice.length - 1];
 
       if (last !== "}" && last !== "]") {
@@ -246,7 +321,7 @@ export function parseJson<T>(text: string): T {
       try {
         return JSON.parse(slice) as T;
       } catch {
-        // Continue shrinking the candidate.
+        // Keep looking.
       }
     }
   }
@@ -256,6 +331,9 @@ export function parseJson<T>(text: string): T {
   );
 }
 
+/**
+ * Converts backend errors into useful HTTP responses.
+ */
 export function fail(err: unknown) {
   const message =
     err instanceof Error
@@ -266,9 +344,13 @@ export function fail(err: unknown) {
 
   if (/no gemini api key/i.test(message)) {
     status = 400;
-  } else if (/rejected the api key/i.test(message)) {
+  } else if (
+    /rejected the api key/i.test(message)
+  ) {
     status = 401;
-  } else if (/quota|rate limit/i.test(message)) {
+  } else if (
+    /quota|rate limit/i.test(message)
+  ) {
     status = 429;
   }
 
