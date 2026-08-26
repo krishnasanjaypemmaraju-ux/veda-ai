@@ -1,3 +1,17 @@
+import { AnswerBlock, Rect, Question } from './types';
+
+// 1. FIXED COORDINATE MAPPING
+export function boxToRect(box2d: [number, number, number, number], imageWidth: number, imageHeight: number): Rect {
+  const [ymin, xmin, ymax, xmax] = box2d;
+  return {
+    x: (xmin / 1000) * imageWidth,
+    y: (ymin / 1000) * imageHeight,
+    width: ((xmax - xmin) / 1000) * imageWidth,
+    height: ((ymax - ymin) / 1000) * imageHeight,
+  };
+}
+
+// 2. FIXED CONTINUATION BUG (Stops empty blocks breaking the UI)
 export function cleanAnswerBlocks(rawBlocks: any[]): AnswerBlock[] {
   const cleaned: AnswerBlock[] = [];
   
@@ -13,7 +27,7 @@ export function cleanAnswerBlocks(rawBlocks: any[]): AnswerBlock[] {
         }
         lastBlock.text += `\n${block.text || ''}`;
       }
-      continue; 
+      continue; // THIS PREVENTS FAKE BLOCKS
     }
     cleaned.push({
       ...block,
@@ -23,3 +37,22 @@ export function cleanAnswerBlocks(rawBlocks: any[]): AnswerBlock[] {
   
   return cleaned;
 }
+
+export function normalizeLabel(label: string | null | undefined): string {
+  if (!label) return '';
+  return label.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// ==========================================
+// ⚠️ PASTE YOUR ORIGINAL FUNCTIONS BELOW ⚠️
+// ==========================================
+// I do not have your original code for these. You must paste them from your Git history
+// so /api/map and /api/grade don't crash on Vercel.
+
+// export function deterministicMatch(...) {
+//    YOUR ORIGINAL CODE HERE
+// }
+
+// export function applySemantic(...) {
+//    YOUR ORIGINAL CODE HERE
+// }
