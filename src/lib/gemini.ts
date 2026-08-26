@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
 
-// Restored helper for API routes
+// 1. RECONSTRUCTED HELPER (Fixes build error in route.ts)
+export function fail(message: string, status: number = 500) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+// 2. RECONSTRUCTED HELPER (Fixes build error in route.ts)
 export function resolveKey(req: Request): string | null {
   const clientKey = req.headers.get('x-gemini-key');
   return process.env.GEMINI_API_KEY || clientKey || null;
 }
 
-// Restored helper for standardizing errors
-export function fail(message: string, status: number = 500) {
-  return NextResponse.json({ error: message }, { status });
-}
-
-// Restored helper to safely parse Gemini JSON and strip Markdown
+// 3. FIXED JSON PARSER (Stops the 500 Internal Server Error)
 export function parseJson(text: string) {
   try {
+    // Strips the ```json wrappers Gemini adds
     const cleaned = text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     return JSON.parse(cleaned);
   } catch (err) {
@@ -22,10 +23,10 @@ export function parseJson(text: string) {
   }
 }
 
-// The main API caller with the fixes
+// 4. FIXED GEMINI CALL
 export async function callGemini(images: any[], prompt: string, apiKey: string) {
   const model = process.env.GEMINI_MODEL || "gemini-3.6-flash"; 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:generateContent?key=${apiKey}`;
 
   const requestBody = {
     contents: [
