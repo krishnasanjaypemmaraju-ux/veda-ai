@@ -4,6 +4,7 @@ import type { AnswerBlock } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 const SYSTEM = `You read one page of a student's handwritten answer booklet and extract answer blocks.
 

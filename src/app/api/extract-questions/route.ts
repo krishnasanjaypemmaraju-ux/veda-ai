@@ -4,6 +4,7 @@ import type { Question } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 const SYSTEM = `You read one page of a printed question paper and list every question on it.
 

@@ -4,6 +4,7 @@ import type { AnswerBlock, Question } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 const SYSTEM = `You place stray answers. A student wrote some answers without a question number, and the numbered ones have already been placed.
 

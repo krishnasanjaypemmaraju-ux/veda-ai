@@ -74,7 +74,13 @@ export async function callGemini(opts: {
       try {
         response = await fetch(
           `${BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(opts.apiKey)}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body, cache: "no-store" },
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            cache: "no-store",
+            signal: AbortSignal.timeout(45_000), // fail fast before Vercel's 60s wall
+          },
         );
       } catch (e) {
         lastError = `Network error: ${e instanceof Error ? e.message : e}`;
