@@ -2,89 +2,83 @@
 
 import type { PageImage } from "./types";
 
-const TARGET_WIDTH = 1500; // enough for handwriting, small enough for one request per page
-const MAX_SIDE = 2000;
+// Max dimension so images are readable but requests stay under Vercel's 4.5 MB body limit.
+const MAX_SIDE = 1500;
 const QUALITY = 0.78;
 
-let pdfjs: typeof import("pdfjs-dist") | null = null;
+async function fileToPages(file: File): Promise<PageImage[]> {
+  if (file.type === "application/pdf") {
+    return pdfToPages(file);
+  }
+  return [await imageFileToPage(file, 0)];
+}
 
-async function getPdfjs() {
-  if (pdfjs) return pdfjs;
-  const lib = await import("pdfjs-dist");
-  lib.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
+async function imageFileToPage(file: File, index: number): Promise<PageImage> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { dataUrl, width, height } = renderToCanvas(img, img.naturalWidth, img.naturalHeight);
+      resolve({ index, dataUrl, width, height });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function renderToCanvas(
+  source: HTMLImageElement | HTMLCanvasElement,
+  srcW: number,
+  srcH: number,
+): { dataUrl: string; width: number; height: number } {
+  const scale = Math.min(1, MAX_SIDE / Math.max(srcW, srcH));
+  const w = Math.round(srcW * scale);
+  const h = Math.round(srcH * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(source, 0, 0, w, h);
+  return { dataUrl: canvas.toDataURL("image/jpeg", QUALITY), width: w, height: h };
+}
+
+async function pdfToPages(file: File): Promise<PageImage[]> {
+  // Dynamic import so pdfjs-dist is not included in the server bundle.
+  const pdfjs = await import("pdfjs-dist");
+  // Use the bundled worker from node_modules.
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.mjs",
     import.meta.url,
   ).toString();
-  pdfjs = lib;
-  return lib;
-}
 
-function canvasToPage(canvas: HTMLCanvasElement, index: number): PageImage {
-  return {
-    index,
-    dataUrl: canvas.toDataURL("image/jpeg", QUALITY),
-    width: canvas.width,
-    height: canvas.height,
-  };
-}
-
-async function imageToPage(file: File, index: number): Promise<PageImage> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return canvasToPage(canvas, index);
-}
-
-async function pdfToPages(
-  file: File,
-  offset: number,
-  onPage?: (done: number, total: number) => void,
-): Promise<PageImage[]> {
-  const lib = await getPdfjs();
   const buffer = await file.arrayBuffer();
-  const doc = await lib.getDocument({ data: buffer }).promise;
+  const pdf = await pdfjs.getDocument({ data: buffer }).promise;
   const pages: PageImage[] = [];
 
-  for (let n = 1; n <= doc.numPages; n++) {
-    const page = await doc.getPage(n);
-    const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(TARGET_WIDTH / base.width, MAX_SIDE / base.height);
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1 });
+    const scale = Math.min(1, MAX_SIDE / Math.max(vp.width, vp.height));
     const viewport = page.getViewport({ scale });
+
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     await page.render({ canvasContext: ctx, viewport }).promise;
-    pages.push(canvasToPage(canvas, offset + pages.length));
-    onPage?.(n, doc.numPages);
+    const { dataUrl, width, height } = renderToCanvas(canvas, canvas.width, canvas.height);
+    pages.push({ index: i - 1, dataUrl, width, height });
   }
 
   return pages;
 }
 
-/** Accepts a mix of PDFs and images and returns one flat, ordered page list. */
-export async function filesToPages(
-  files: File[],
-  onPage?: (done: number, total: number) => void,
-): Promise<PageImage[]> {
-  const pages: PageImage[] = [];
-  for (const file of files) {
-    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      const produced = await pdfToPages(file, pages.length, onPage);
-      pages.push(...produced);
-    } else {
-      pages.push(await imageToPage(file, pages.length));
-      onPage?.(pages.length, pages.length);
-    }
-  }
-  return pages.map((p, i) => ({ ...p, index: i }));
+export async function filesToPages(files: File[]): Promise<PageImage[]> {
+  const groups = await Promise.all(files.map(fileToPages));
+  const pages = groups.flat();
+  // Re-index so page numbers are contiguous across multiple files.
+  pages.forEach((p, i) => (p.index = i));
+  return pages;
 }

@@ -1,50 +1,66 @@
-import { NextResponse } from 'next/server';
-import { callGemini } from '@/lib/gemini';
+import { callGemini, fail, imagePart, parseJson, resolveKey } from "@/lib/gemini";
+import { boxToRect, normaliseLabel } from "@/lib/mapping";
+import type { Question } from "@/lib/types";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const SYSTEM = `You read one page of a printed question paper and list every question on it.
+
+Rules:
+1. Preserve printed order top-to-bottom.
+2. Treat every sub-part as its own question: "11(a)", "11(b)", "3(b)(i)", "3(b)(ii)".
+3. number is the label exactly as printed: "11(a)", "Q.3", "5.b.ii".
+4. text is the full question text, including any sub-question context needed to answer it.
+5. marks is the integer mark allocation if printed (e.g. "[5]", "(3 marks)"), otherwise null.
+6. section is the section heading if the question falls under one (e.g. "Section B"), otherwise null.
+7. box_2d is optional: [ymin, xmin, ymax, xmax] normalised 0-1000 tightly around the question. Omit if unsure.
+8. If the page has no questions (e.g. a cover page), return an empty list.
+
+Return only JSON:
+{"questions":[{"number":"11(a)","text":"...","marks":5,"section":"B","box_2d":[0,0,100,100]}]}`;
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { images, prompt } = body;
+    const apiKey = resolveKey(req);
+    const { image, pageIndex, startOrder } = (await req.json()) as {
+      image: string;
+      pageIndex: number;
+      startOrder: number;
+    };
 
-    const clientKey = req.headers.get('x-gemini-key');
-    const apiKey = process.env.GEMINI_API_KEY || clientKey;
+    const text = await callGemini({
+      apiKey,
+      system: SYSTEM,
+      parts: [
+        imagePart(image),
+        { text: `This is page ${pageIndex + 1} of the question paper.` },
+      ],
+    });
 
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing Gemini API Key." }, { status: 401 });
-    }
+    const raw = parseJson<{
+      questions?: {
+        number?: string;
+        text?: string;
+        marks?: number | null;
+        section?: string | null;
+        box_2d?: number[];
+      }[];
+    }>(text);
 
-    if (!images || !Array.isArray(images) || images.length === 0) {
-      return NextResponse.json({ error: "No images provided." }, { status: 400 });
-    }
+    const questions: Question[] = (raw.questions ?? [])
+      .filter((q) => q.number && q.text)
+      .map((q, i) => ({
+        id: `q-${pageIndex}-${startOrder + i}-${normaliseLabel(q.number)}`,
+        number: String(q.number!).trim(),
+        text: String(q.text!).trim(),
+        marks: typeof q.marks === "number" ? q.marks : null,
+        section: q.section ? String(q.section).trim() : null,
+        order: startOrder + i,
+      }));
 
-    const defaultPrompt = `
-      Analyze this question paper page. Extract every question.
-      Preserve the original numbering and treat subparts (e.g., 11(a), 11(b)) as separate questions.
-      Return purely a JSON object with this structure:
-      {
-        "questions": [
-          {
-            "label": "11(a)",
-            "text": "The text of the question",
-            "marks": 5,
-            "box_2d": [0, 0, 100, 100] 
-          }
-        ]
-      }
-      Coordinates must be 0-1000 representing [ymin, xmin, ymax, xmax].
-    `;
-
-    const result = await callGemini(images, prompt || defaultPrompt, apiKey);
-    return NextResponse.json(result);
-
-  } catch (error: any) {
-    console.error("Extract Questions API Error:", error);
-    return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
-      { status: error.message?.includes("Gemini Error") ? 502 : 500 }
-    );
+    return Response.json({ questions });
+  } catch (err) {
+    return fail(err);
   }
 }
