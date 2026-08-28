@@ -1,5 +1,4 @@
 "use client";
-
 import type { AnswerBlock, Grade, Match, Question, Summary } from "@/lib/types";
 
 export default function QuestionPane(props: {
@@ -14,122 +13,109 @@ export default function QuestionPane(props: {
   onSelectQuestion: (id: string) => void;
   onSelectBlock: (id: string) => void;
 }) {
-  const { summary } = props;
+  const { questions, matches, grades, summary, activeQuestionId, unmatched } = props;
+  const answered = questions.filter(q => matches.has(q.id));
+  const unanswered = questions.filter(q => !matches.has(q.id));
+
+  const ScoreBadge = ({ qId }: { qId: string }) => {
+    const g = grades.get(qId);
+    const q = questions.find(x => x.id === qId);
+    if (!g && !q?.marks) return null;
+    const awarded = g?.awarded ?? null;
+    const max = q?.marks ?? g?.max ?? null;
+    const cls = !matches.has(qId) ? "unanswered" : g?.verdict === "incorrect" ? "incorrect" : "";
+    return (
+      <span className={`vd-score-badge ${cls}`}>
+        {awarded !== null && max !== null ? `${awarded}/${max}` : awarded !== null ? String(awarded) : max !== null ? `—/${max}` : ""}
+      </span>
+    );
+  };
 
   return (
     <div className="vd-pane">
+      {/* header */}
       <div className="vd-pane-head">
-        <h2 className="vd-pane-title">Question paper</h2>
-        <p className="vd-pane-meta">
-          {props.questions.length} questions, printed order preserved · ↑↓ to step through
-        </p>
-      </div>
-
-      <div className="vd-summary">
-        {summary.awarded !== null && summary.max ? (
-          <div className="vd-score">
-            <span className="vd-score-value">
-              {summary.awarded}/{summary.max}
-            </span>
-            <span className="vd-score-label">marks awarded</span>
-          </div>
-        ) : null}
-
-        <div className="vd-tally">
-          <span>{summary.answered} answered</span>
-          <span>{summary.unanswered} left blank</span>
-          <span>{summary.unmatched} unplaced</span>
+        <div className="vd-pane-title">
+          Extracted Questions <span style={{fontSize:12,color:"var(--mid)",fontWeight:400}}>(from question paper)</span>
+          <button className="vd-expand-btn">Expand All</button>
         </div>
-
-        {summary.overall && <p className="vd-overall">{summary.overall}</p>}
-
-        {(summary.strengths.length > 0 || summary.focus.length > 0) && (
-          <ul className="vd-notes">
-            {summary.strengths.map((s) => (
-              <li key={`s-${s}`}>Solid: {s}</li>
-            ))}
-            {summary.focus.map((s) => (
-              <li key={`f-${s}`}>Work on: {s}</li>
-            ))}
-          </ul>
-        )}
+        <div className="vd-pane-meta">{questions.length} questions · {answered.length} answered · {unanswered.length} unanswered</div>
       </div>
 
-      <ul className="vd-qlist">
-        {props.questions.map((q) => {
-          const match = props.matches.get(q.id);
-          const grade = props.grades.get(q.id);
-          const active = props.activeQuestionId === q.id;
-          const pages = match
-            ? [...new Set(match.blockIds.map((id) => props.blocks.get(id)?.page).filter((p) => p !== undefined))]
-            : [];
+      {/* summary */}
+      {(summary.awarded !== null || summary.answered > 0) && (
+        <div className="vd-summary">
+          {summary.awarded !== null && summary.max !== null && (
+            <div className="vd-score">
+              <span className="vd-score-value">{summary.awarded}</span>
+              <span className="vd-score-max">/ {summary.max}</span>
+            </div>
+          )}
+          <div className="vd-tally">
+            <span>✅ {summary.answered} answered</span>
+            {summary.unanswered > 0 && <span>⚠️ {summary.unanswered} unanswered</span>}
+            {summary.unmatched > 0 && <span>❓ {summary.unmatched} unplaced</span>}
+          </div>
+          {summary.overall && <p className="vd-overall">{summary.overall}</p>}
+        </div>
+      )}
 
-          const statusClass = !match
-            ? "s-unanswered"
-            : match.method === "semantic"
-              ? "s-semantic"
-              : "s-answered";
-          const statusText = !match
-            ? "no answer"
-            : match.method === "semantic"
-              ? "matched by content"
-              : pages.length > 1
-                ? `pages ${pages.map((p) => (p as number) + 1).join(", ")}`
-                : `page ${(pages[0] as number) + 1}`;
+      {/* question list */}
+      <div className="vd-qscroll">
+        <ul className="vd-qlist">
+          {questions.map((q, idx) => {
+            const isActive = q.id === activeQuestionId;
+            const isAnswered = matches.has(q.id);
+            const g = grades.get(q.id);
 
-          return (
-            <li key={q.id}>
-              <button
-                className={`vd-q${active ? " is-active" : ""}`}
-                onClick={() => props.onSelectQuestion(q.id)}
-                aria-pressed={active}
-              >
-                <span className="vd-q-top">
-                  <span className="vd-q-num">{q.number}</span>
-                  <span className={`vd-q-status ${statusClass}`}>{statusText}</span>
-                </span>
-                <p className="vd-q-text">{q.text}</p>
-                <span className="vd-q-foot">
-                  {q.marks !== null && <span>{q.marks} marks</span>}
-                  {q.section && <span>section {q.section}</span>}
-                  {grade && (
-                    <span className={`vd-verdict v-${grade.verdict}`}>
-                      {grade.verdict}
-                      {grade.awarded !== null && grade.max !== null
-                        ? ` ${grade.awarded}/${grade.max}`
-                        : ""}
-                    </span>
-                  )}
-                  {match?.note && <span>{match.note}</span>}
-                </span>
-                {active && grade?.feedback && <p className="vd-q-feedback">{grade.feedback}</p>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-
-      {props.unmatched.length > 0 && (
-        <>
-          <p className="vd-group">Written, but not against any question</p>
-          <ul className="vd-qlist">
-            {props.unmatched.map((b) => (
-              <li key={b.id}>
-                <button
-                  className={`vd-q${props.activeBlockId === b.id ? " is-active" : ""}`}
-                  onClick={() => props.onSelectBlock(b.id)}
-                >
-                  <span className="vd-q-top">
-                    <span className="vd-q-num">{b.label ?? "unlabelled"}</span>
-                    <span className="vd-q-status s-unanswered">page {b.page + 1}</span>
-                  </span>
-                  <p className="vd-q-text">{b.text}</p>
+            return (
+              <li key={q.id}>
+                <button className={`vd-q${isActive ? " is-active" : ""}`} onClick={() => props.onSelectQuestion(q.id)}>
+                  <div className="vd-q-num">{idx + 1}</div>
+                  <div className="vd-q-body">
+                    <div className="vd-q-row">
+                      <span style={{fontSize:11,fontWeight:600,color:"var(--mid)",marginBottom:2,display:"block"}}>
+                        {q.number}{q.section ? ` · ${q.section}` : ""}
+                      </span>
+                      <ScoreBadge qId={q.id} />
+                    </div>
+                    <p className="vd-q-text">{q.text}</p>
+                    <div className="vd-q-row" style={{marginTop:4}}>
+                      <span className={`vd-q-status ${isAnswered ? "answered" : "unanswered"}`}>
+                        {isAnswered ? "✓ Answered" : "✗ Unanswered"}
+                      </span>
+                      {q.marks && <span style={{fontSize:11,color:"var(--mid)"}}>{q.marks} marks</span>}
+                    </div>
+                    {isActive && g?.feedback && (
+                      <div className="vd-q-feedback">
+                        <div className="vd-q-feedback-label">AI Feedback</div>
+                        {g.feedback}
+                      </div>
+                    )}
+                  </div>
                 </button>
               </li>
-            ))}
-          </ul>
-        </>
-      )}
+            );
+          })}
+
+          {unmatched.length > 0 && (
+            <>
+              <p className="vd-group">Unplaced answers ({unmatched.length})</p>
+              {unmatched.map((b, i) => (
+                <li key={b.id}>
+                  <button className="vd-unmatched-q" onClick={() => props.onSelectBlock(b.id)}>
+                    <div className="vd-unmatched-num">?</div>
+                    <div className="vd-unmatched-text">
+                      {b.label ? `Label: ${b.label} · ` : ""}
+                      {b.text.slice(0, 100)}{b.text.length > 100 ? "…" : ""}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </>
+          )}
+        </ul>
+      </div>
     </div>
   );
 }
