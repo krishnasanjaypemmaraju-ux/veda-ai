@@ -6,337 +6,386 @@ import SheetPane from "@/components/SheetPane";
 import { runPipeline, type Result } from "@/lib/pipeline";
 import type { Progress } from "@/lib/types";
 
-/* ── tiny icon helpers ──────────────────────────────────────────────── */
-const HomeIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
-const ClassIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>;
-const AssignIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
-const ExamIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>;
-const LibIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>;
-const StarIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
-const UploadIcon = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>;
+/* ── SVG Icons ─────────────────────────────────────────────────────── */
+const I = {
+  home: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  exam: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+  upload: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>,
+  spark: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>,
+  check: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>,
+  warn: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  new: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  dl: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+};
+
+const STAGES = ["reading","questions","answers","mapping","grading"] as const;
+const STAGE_LABELS: Record<string,string> = {
+  reading:"Reading files", questions:"Extracting questions",
+  answers:"Reading answers", mapping:"Mapping answers", grading:"Grading",
+};
 
 export default function Page() {
-  const [questionFiles, setQuestionFiles] = useState<File[]>([]);
-  const [answerFiles, setAnswerFiles]     = useState<File[]>([]);
-  const [apiKey, setApiKey]               = useState("");
-  const [needsKey, setNeedsKey]           = useState(false);
-  const [withGrading, setWithGrading]     = useState(true);
-  const [running, setRunning]             = useState(false);
-  const [progress, setProgress]           = useState<Progress | null>(null);
-  const [error, setError]                 = useState<string | null>(null);
-  const [result, setResult]               = useState<Result | null>(null);
-  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
-  const [activeBlockId, setActiveBlockId]       = useState<string | null>(null);
-  const [qDragOver, setQDragOver] = useState(false);
-  const [aDragOver, setADragOver] = useState(false);
+  const [questionFiles, setQF] = useState<File[]>([]);
+  const [answerFiles,   setAF] = useState<File[]>([]);
+  const [apiKey,   setKey]   = useState("");
+  const [needsKey, setNeedsKey] = useState(false);
+  const [withGrading, setGrade] = useState(true);
+  const [running,  setRunning]  = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [error,    setError]    = useState<string | null>(null);
+  const [result,   setResult]   = useState<Result | null>(null);
+  const [activeQId, setActiveQId]   = useState<string | null>(null);
+  const [activeBlkId, setActiveBlkId] = useState<string | null>(null);
+  const [qOver, setQOver] = useState(false);
+  const [aOver, setAOver] = useState(false);
 
   useEffect(() => {
-    fetch("/api/status")
-      .then(r => r.json())
-      .then(s => setNeedsKey(!s.hasServerKey))
-      .catch(() => setNeedsKey(true));
+    fetch("/api/status").then(r=>r.json()).then(s=>setNeedsKey(!s.hasServerKey)).catch(()=>setNeedsKey(true));
   }, []);
 
+  const canStart = questionFiles.length > 0 && answerFiles.length > 0 && (!needsKey || apiKey.trim().length > 3);
+
   const start = async () => {
-    setRunning(true); setError(null); setResult(null);
+    setRunning(true); setError(null); setResult(null); setActiveQId(null);
     try {
       const res = await runPipeline({ questionFiles, answerFiles, apiKey, withGrading, onProgress: setProgress });
       setResult(res);
-      setActiveQuestionId(res.matches[0]?.questionId ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setActiveQId(res.matches[0]?.questionId ?? null);
+    } catch(err) {
+      setError(err instanceof Error ? err.message : "Unknown error. Check your API key and try again.");
     } finally { setRunning(false); }
   };
 
-  const reset = () => { setResult(null); setProgress(null); setError(null); setActiveQuestionId(null); setActiveBlockId(null); };
-
-  useEffect(() => {
-    if (!result) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const t = e.target as HTMLElement|null;
-      if (t && ["INPUT","TEXTAREA"].includes(t.tagName)) return;
-      e.preventDefault();
-      const ids = result.questions.map(q => q.id);
-      const at = activeQuestionId ? ids.indexOf(activeQuestionId) : -1;
-      const next = e.key === "ArrowDown" ? at+1 : at-1;
-      if (next >= 0 && next < ids.length) { setActiveBlockId(null); setActiveQuestionId(ids[next]); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [result, activeQuestionId]);
+  const reset = () => { setResult(null); setProgress(null); setError(null); setActiveQId(null); setActiveBlkId(null); setQF([]); setAF([]); };
 
   const derived = useMemo(() => {
     if (!result) return null;
-    const matches = new Map(result.matches.map(m => [m.questionId, m]));
-    const grades  = new Map(result.grades.map(g  => [g.questionId, g]));
-    const blocks  = new Map(result.blocks.map(b  => [b.id, b]));
+    const matches = new Map(result.matches.map(m=>[m.questionId,m]));
+    const grades  = new Map(result.grades.map(g=>[g.questionId,g]));
+    const blocks  = new Map(result.blocks.map(b=>[b.id,b]));
     const unmatchedIds = new Set(result.unmatchedBlockIds);
-    const unmatched = result.blocks.filter(b => unmatchedIds.has(b.id) && b.text.replace(/\u200b/g,"").trim());
+    const unmatched = result.blocks.filter(b=>unmatchedIds.has(b.id)&&b.text.replace(/\u200b/g,"").trim());
     return { matches, grades, blocks, unmatched };
   }, [result]);
 
-  const activeBlockIds = useMemo(() => {
-    if (!result || !derived) return [];
-    if (activeQuestionId) {
-      const match = derived.matches.get(activeQuestionId);
-      if (!match) return [];
-      const base = new Set(match.blockIds);
-      return result.blocks.filter(b => base.has(b.id) || [...base].some(id => b.id.startsWith(`${id}-x`))).map(b => b.id);
+  const activeBlockIds = useMemo(()=>{
+    if (!result||!derived) return [];
+    if (activeQId) {
+      const m = derived.matches.get(activeQId);
+      if (!m) return [];
+      const base = new Set(m.blockIds);
+      return result.blocks.filter(b=>base.has(b.id)||[...base].some(id=>b.id.startsWith(`${id}-x`))).map(b=>b.id);
     }
-    if (activeBlockId) return [activeBlockId];
+    if (activeBlkId) return [activeBlkId];
     return [];
-  }, [result, derived, activeQuestionId, activeBlockId]);
+  }, [result, derived, activeQId, activeBlkId]);
 
-  const activeLabel = useMemo(() => {
+  const activeLabel = useMemo(()=>{
     if (!result) return null;
-    if (activeQuestionId) return result.questions.find(q => q.id === activeQuestionId)?.number ?? null;
-    if (activeBlockId) { const b = result.blocks.find(x => x.id === activeBlockId); return b?.label ?? "?"; }
+    if (activeQId) return result.questions.find(q=>q.id===activeQId)?.number??null;
+    if (activeBlkId) return result.blocks.find(b=>b.id===activeBlkId)?.label??"?";
     return null;
-  }, [result, activeQuestionId, activeBlockId]);
+  }, [result, activeQId, activeBlkId]);
 
-  const selectQuestion = (id: string) => { setActiveBlockId(null); setActiveQuestionId(c => c === id ? null : id); };
-  const selectBlock = (id: string) => {
+  const selectQ = (id:string) => { setActiveBlkId(null); setActiveQId(c=>c===id?null:id); };
+  const selectB = (id:string) => {
     if (!result) return;
-    const owner = result.matches.find(m => m.blockIds.includes(id));
-    if (owner) { setActiveBlockId(null); setActiveQuestionId(owner.questionId); return; }
-    setActiveQuestionId(null); setActiveBlockId(c => c === id ? null : id);
+    const owner = result.matches.find(m=>m.blockIds.includes(id));
+    if (owner) { setActiveBlkId(null); setActiveQId(owner.questionId); return; }
+    setActiveQId(null); setActiveBlkId(c=>c===id?null:id);
   };
 
-  const handleFileDrop = (setter: (f: File[]) => void) => (e: React.DragEvent) => {
+  const dropFiles = (setter:(f:File[])=>void) => (e:React.DragEvent) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf" || f.type.startsWith("image/"));
-    if (files.length) setter(files);
+    const fs = Array.from(e.dataTransfer.files).filter(f=>f.type==="application/pdf"||f.type.startsWith("image/"));
+    if (fs.length) setter(fs);
   };
 
-  const canStart = questionFiles.length > 0 && answerFiles.length > 0 && (!needsKey || apiKey.trim());
+  const fmtSize = (n:number) => n>1e6?`${(n/1e6).toFixed(1)} MB`:`${Math.round(n/1000)} KB`;
 
-  /* progress stages */
-  const stages = ["reading","questions","answers","mapping","grading","ready"] as const;
-  const stageLabel: Record<string, string> = {
-    reading:"Reading files", questions:"Extracting questions", answers:"Reading answers",
-    mapping:"Mapping answers", grading:"Grading", ready:"Complete",
+  const curStageIdx = progress ? STAGES.indexOf(progress.stage as typeof STAGES[number]) : -1;
+
+  const exportCSV = () => {
+    if (!result||!derived) return;
+    const rows = [["Question","Number","Status","Awarded","Max","Verdict","Feedback"]];
+    for (const q of result.questions) {
+      const m = derived.matches.get(q.id);
+      const g = derived.grades.get(q.id);
+      rows.push([q.text.slice(0,80), q.number, m?"Answered":"Unanswered", String(g?.awarded??""), String(q.marks??""), g?.verdict??"", g?.feedback??""]);
+    }
+    const csv = rows.map(r=>r.map(c=>`"${c.replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="veda-marks.csv"; a.click();
   };
-  const currentStageIdx = progress ? stages.indexOf(progress.stage as typeof stages[number]) : -1;
 
-  /* file size helper */
-  const fmtSize = (bytes: number) => bytes > 1_000_000 ? `${(bytes/1_000_000).toFixed(1)}MB` : `${Math.round(bytes/1000)}KB`;
-
-  const sidebar = (
+  /* ── Sidebar ─────────────────────────────────────────────────────── */
+  const Sidebar = () => (
     <aside className="vd-sidebar">
-      <div className="vd-logo">
-        <div className="vd-logo-icon">V</div>
-        VedaAI
+      <div className="vd-sidebar-logo">
+        <div className="vd-logo-mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <span className="vd-logo-text">VedaAI</span>
       </div>
-      <button className="vd-ai-btn">
-        <StarIcon /> AI Teacher&apos;s Toolkit
+
+      <button className="vd-sidebar-ai">
+        {I.spark} AI Teacher&apos;s Toolkit
       </button>
+
+      <p className="vd-sidebar-section">Workspace</p>
+
       <ul className="vd-nav">
-        <li><HomeIcon /> Home</li>
-        <li><ClassIcon /> My Classroom</li>
-        <li><AssignIcon /> Assignments</li>
-        <li className="active"><ExamIcon /> Exams</li>
-        <li><LibIcon /> My Library</li>
+        <li className="vd-nav-item" onClick={result?reset:undefined} style={{cursor:result?"pointer":"default"}}>
+          {I.home} Home {result && <span style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.35)"}}>← back</span>}
+        </li>
+        <li className="vd-nav-item active">
+          {I.exam} Marking Desk <span className="vd-nav-badge">Live</span>
+        </li>
       </ul>
+
+      <div style={{flex:1}}/>
+      <div className="vd-sidebar-footer">
+        <div className="vd-user-avatar">S</div>
+        <div className="vd-user-info">
+          <div className="vd-user-name">Sanjay P.</div>
+          <div className="vd-user-role">Teacher</div>
+        </div>
+      </div>
     </aside>
   );
 
-  const topbar = (
+  /* ── Topbar ──────────────────────────────────────────────────────── */
+  const Topbar = () => (
     <div className="vd-topbar">
+      <span className="vd-topbar-title">
+        Marking Desk
+        {result && <span className="vd-topbar-subtitle">· {result.questions.length} questions · {result.matches.length} answered</span>}
+      </span>
       {result && (
         <>
-          <button className="vd-go" style={{width:"auto",padding:"8px 18px",fontSize:"13px",borderRadius:"8px",fontWeight:600}} onClick={() => { const blockById=new Map(result.blocks.map(b=>[b.id,b])); const rows=[["Q","Status","Marks","Max","Verdict","Feedback",...result.questions.map(q=>{const m=derived?.matches.get(q.id);const g=derived?.grades.get(q.id);return[q.number,m?"answered":"blank",g?.awarded??"",q.marks??"",g?.verdict??"",g?.feedback??""]})]];const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="marks.csv";a.click(); }}>
-            Export CSV
-          </button>
-          <button className="vd-go" style={{width:"auto",padding:"8px 18px",fontSize:"13px",borderRadius:"8px",fontWeight:600,background:"#3A3A3C"}} onClick={reset}>
-            New Session
-          </button>
+          <button className="vd-topbar-btn ghost" onClick={exportCSV}>{I.dl} Export CSV</button>
+          <button className="vd-topbar-btn primary" onClick={reset}>{I.new} New Session</button>
         </>
       )}
-      <div className="vd-topbar-btn" style={{position:"relative"}}>
-        🔔 <span className="vd-notif-dot"/>
-      </div>
-      <div className="vd-avatar">K</div>
     </div>
   );
 
+  /* ── Results view ────────────────────────────────────────────────── */
   if (result && derived) {
     return (
       <div className="vd-app">
-        <div className="vd-shell">
-          {sidebar}
-          <div className="vd-main">
-            {topbar}
-            <main className="vd-work">
-              <QuestionPane
-                questions={result.questions}
-                matches={derived.matches}
-                grades={derived.grades}
-                blocks={derived.blocks}
-                unmatched={derived.unmatched}
-                summary={result.summary}
-                activeQuestionId={activeQuestionId}
-                activeBlockId={activeBlockId}
-                onSelectQuestion={selectQuestion}
-                onSelectBlock={selectBlock}
-              />
-              <SheetPane
-                pages={result.answerPages}
-                blocks={result.blocks}
-                activeBlockIds={activeBlockIds}
-                activeLabel={activeLabel}
-                onSelectBlock={selectBlock}
-                onClear={() => { setActiveQuestionId(null); setActiveBlockId(null); }}
-              />
-            </main>
+        <Sidebar/>
+        <div className="vd-main">
+          <Topbar/>
+          <div className="vd-work">
+            <QuestionPane
+              questions={result.questions}
+              matches={derived.matches}
+              grades={derived.grades}
+              blocks={derived.blocks}
+              unmatched={derived.unmatched}
+              summary={result.summary}
+              activeQuestionId={activeQId}
+              activeBlockId={activeBlkId}
+              onSelectQuestion={selectQ}
+              onSelectBlock={selectB}
+            />
+            <SheetPane
+              pages={result.answerPages}
+              blocks={result.blocks}
+              activeBlockIds={activeBlockIds}
+              activeLabel={activeLabel}
+              onSelectBlock={selectB}
+              onClear={()=>{setActiveQId(null);setActiveBlkId(null);}}
+            />
           </div>
         </div>
       </div>
     );
   }
 
+  /* ── Upload / Progress view ──────────────────────────────────────── */
   return (
     <div className="vd-app">
-      <div className="vd-shell">
-        {sidebar}
-        <div className="vd-main">
-          {topbar}
-          <div className="vd-landing">
-            <h1 className="vd-landing-title">
-              Upload <span>Question Paper &amp; Answer Sheets</span>
-            </h1>
-            <p className="vd-landing-sub">Upload both files to get started</p>
+      <Sidebar/>
+      <div className="vd-main">
+        <Topbar/>
 
-            {/* teacher illustration */}
-            <div className="vd-teacher">
-              <div className="vd-teacher-inner">👩‍🏫</div>
-              <span className="vd-teacher-dot" style={{top:6,right:6}}/>
-              <span className="vd-teacher-dot" style={{bottom:6,left:14,width:8,height:8,background:"rgba(232,82,26,0.5)"}}/>
-              <span className="vd-teacher-dot" style={{top:"50%",left:2,width:7,height:7,background:"rgba(232,82,26,0.35)",transform:"translateY(-50%)"}}/>
+        {/* PROGRESS SCREEN */}
+        {running && progress ? (
+          <div className="vd-progress-wrap">
+            <div className="vd-spark-anim">
+              <div className="vd-spark-ring"/>
+              <svg viewBox="0 0 80 80" fill="none">
+                <path d="M40 6 L47 33 L74 40 L47 47 L40 74 L33 47 L6 40 L33 33 Z" fill="#E8521A"/>
+                <path d="M62 18 L65.5 29 L76 32.5 L65.5 36 L62 47 L58.5 36 L48 32.5 L58.5 29 Z" fill="rgba(232,82,26,0.55)"/>
+                <circle cx="20" cy="20" r="4" fill="rgba(232,82,26,0.3)"/>
+              </svg>
+            </div>
+            <div className="vd-extracting-text">
+              <h2 className="vd-extracting-h">Extracting…</h2>
+              <p className="vd-extracting-sub">{progress.label} — this may take a while</p>
+            </div>
+            <div className="vd-prog-card">
+              {STAGES.map((s,i)=>{
+                const done = i < curStageIdx;
+                const active = i === curStageIdx;
+                return (
+                  <div key={s} className={`vd-prog-step${done?" done":active?" active":""}`}>
+                    <div className="vd-prog-icon">{done?"✓":active?"→":i+1}</div>
+                    <span>{STAGE_LABELS[s]}</span>
+                    {active && progress.total > 0 && (
+                      <span style={{marginLeft:"auto",fontSize:11,color:"var(--ink-3)"}}>
+                        {progress.done}/{progress.total}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="vd-prog-bar-track">
+                <div className="vd-prog-bar-fill" style={{width: progress.total?`${Math.round((progress.done/progress.total)*100)}%`:"8%"}}/>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* UPLOAD SCREEN */
+          <div className="vd-landing">
+
+            {/* Hero */}
+            <div className="vd-hero">
+              <div className="vd-hero-eyebrow">{I.spark} AI-Powered Answer Mapping</div>
+              <h1 className="vd-hero-title">
+                Upload <span className="accent">Question Paper<br/>&amp; Answer Sheets</span>
+              </h1>
+              <p className="vd-hero-sub">
+                AI extracts every question, reads handwritten answers, maps them together,
+                and highlights the exact region on the sheet.
+              </p>
             </div>
 
-            {/* drop zones */}
-            <div className="vd-drops">
+            {/* Teacher illustration */}
+            <div className="vd-teacher-wrap">
+              <div className="vd-teacher-ring"/>
+              <div className="vd-teacher-ring2"/>
+              <div className="vd-teacher-circle">👩‍🏫</div>
+              <span className="vd-teacher-dot" style={{top:4,right:8}}/>
+              <span className="vd-teacher-dot" style={{bottom:8,left:10,width:8,height:8,background:"rgba(232,82,26,0.45)"}}/>
+              <span className="vd-teacher-dot" style={{top:"50%",left:-4,width:7,height:7,background:"rgba(232,82,26,0.3)",transform:"translateY(-50%)"}}/>
+            </div>
+
+            {/* Upload zones */}
+            <div className="vd-upload-grid">
+
               {/* Question paper */}
               <label
-                className={`vd-drop${questionFiles.length ? " is-set" : ""}${qDragOver ? " is-over" : ""}`}
-                onDragOver={e=>{e.preventDefault();setQDragOver(true);}}
-                onDragLeave={()=>setQDragOver(false)}
-                onDrop={e=>{setQDragOver(false);handleFileDrop(setQuestionFiles)(e);}}
+                className={`vd-drop${questionFiles.length?" is-set":""}${qOver?" is-over":""}`}
+                onDragOver={e=>{e.preventDefault();setQOver(true);}}
+                onDragLeave={()=>setQOver(false)}
+                onDrop={e=>{setQOver(false);dropFiles(setQF)(e);}}
               >
-                <input type="file" accept=".pdf,image/*" multiple style={{display:"none"}} onChange={e=>{const f=Array.from(e.target.files??[]);if(f.length)setQuestionFiles(f);}} />
+                <input type="file" accept=".pdf,image/*" multiple hidden onChange={e=>{const f=Array.from(e.target.files??[]);if(f.length)setQF(f);}}/>
                 {questionFiles.length ? (
                   <>
-                    {questionFiles.map((f,i) => (
-                      <div className="vd-file-chip" key={i}>
-                        <div className="vd-file-chip-icon">PDF</div>
-                        <div className="vd-file-chip-info">
-                          <div className="vd-file-chip-name">{f.name}</div>
-                          <div className="vd-file-chip-meta">{fmtSize(f.size)}</div>
+                    {questionFiles.map((f,i)=>(
+                      <div className="vd-file-card" key={i}>
+                        <div className="vd-file-card-icon">PDF</div>
+                        <div className="vd-file-card-info">
+                          <div className="vd-file-card-name">{f.name}</div>
+                          <div className="vd-file-card-meta">{fmtSize(f.size)}</div>
                         </div>
+                        <div className="vd-file-card-remove" onClick={e=>{e.preventDefault();setQF([]);}}>×</div>
                       </div>
                     ))}
-                    <span style={{fontSize:12,color:"var(--mid)"}}>Click to change</span>
+                    <span style={{fontSize:11,color:"var(--ink-4)"}}>Click to replace</span>
                   </>
                 ) : (
                   <>
-                    <div className="vd-drop-icon"><UploadIcon /></div>
-                    <div className="vd-drop-title">Upload <span>Question Paper</span></div>
-                    <div className="vd-drop-hint">Max 10MB</div>
+                    <div className="vd-drop-upload-icon">{I.upload}</div>
+                    <div className="vd-drop-label">Upload <span>Question Paper</span></div>
+                    <div className="vd-drop-hint">PDF or images · Max 10 MB</div>
                   </>
                 )}
               </label>
 
               {/* Answer sheet */}
               <label
-                className={`vd-drop${answerFiles.length ? " is-set" : ""}${aDragOver ? " is-over" : ""}`}
-                onDragOver={e=>{e.preventDefault();setADragOver(true);}}
-                onDragLeave={()=>setADragOver(false)}
-                onDrop={e=>{setADragOver(false);handleFileDrop(setAnswerFiles)(e);}}
+                className={`vd-drop${answerFiles.length?" is-set":""}${aOver?" is-over":""}`}
+                onDragOver={e=>{e.preventDefault();setAOver(true);}}
+                onDragLeave={()=>setAOver(false)}
+                onDrop={e=>{setAOver(false);dropFiles(setAF)(e);}}
               >
-                <input type="file" accept=".pdf,image/*" multiple style={{display:"none"}} onChange={e=>{const f=Array.from(e.target.files??[]);if(f.length)setAnswerFiles(f);}} />
+                <input type="file" accept=".pdf,image/*" multiple hidden onChange={e=>{const f=Array.from(e.target.files??[]);if(f.length)setAF(f);}}/>
                 {answerFiles.length ? (
                   <>
-                    {answerFiles.map((f,i) => (
-                      <div className="vd-file-chip" key={i}>
-                        <div className="vd-file-chip-icon">PDF</div>
-                        <div className="vd-file-chip-info">
-                          <div className="vd-file-chip-name">{f.name}</div>
-                          <div className="vd-file-chip-meta">{fmtSize(f.size)}</div>
+                    {answerFiles.map((f,i)=>(
+                      <div className="vd-file-card" key={i}>
+                        <div className="vd-file-card-icon">PDF</div>
+                        <div className="vd-file-card-info">
+                          <div className="vd-file-card-name">{f.name}</div>
+                          <div className="vd-file-card-meta">{fmtSize(f.size)}</div>
                         </div>
+                        <div className="vd-file-card-remove" onClick={e=>{e.preventDefault();setAF([]);}}>×</div>
                       </div>
                     ))}
-                    <span style={{fontSize:12,color:"var(--mid)"}}>Click to change</span>
+                    <span style={{fontSize:11,color:"var(--ink-4)"}}>Click to replace</span>
                   </>
                 ) : (
                   <>
-                    <div className="vd-drop-icon"><UploadIcon /></div>
-                    <div className="vd-drop-title">Upload <span>Answer Sheet</span></div>
-                    <div className="vd-drop-hint">Max 10MB</div>
+                    <div className="vd-drop-upload-icon">{I.upload}</div>
+                    <div className="vd-drop-label">Upload <span>Answer Sheet</span></div>
+                    <div className="vd-drop-hint">PDF or images · Max 10 MB</div>
                   </>
                 )}
               </label>
             </div>
 
-            {/* options */}
-            <div className="vd-options">
+            {/* Options */}
+            <div className="vd-options-card">
               <label className="vd-check">
-                <input type="checkbox" checked={withGrading} onChange={e=>setWithGrading(e.target.checked)} />
-                Mark the script and write per-question feedback. Adds one pass.
+                <input type="checkbox" checked={withGrading} onChange={e=>setGrade(e.target.checked)}/>
+                <span><strong>AI Grading</strong> — Mark the script and write per-question feedback (adds one extra pass)</span>
               </label>
               {needsKey && (
-                <div>
-                  <span className="vd-key-label">Gemini API key (kept in browser only)</span>
-                  <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="AQ.Ab8RN…" className="vd-key" />
+                <div className="vd-key-row">
+                  <span className="vd-key-label">Gemini API Key <span style={{color:"var(--ink-4)"}}>— kept in your browser only, never sent to our servers</span></span>
+                  <input className="vd-key-input" type="password" value={apiKey} onChange={e=>setKey(e.target.value)} placeholder="AQ.Ab8RN…  (get free key at aistudio.google.com)"/>
                 </div>
               )}
             </div>
 
-            {/* error */}
-            {error && <div className="vd-error">{error}</div>}
-
-            {/* progress */}
-            {running && progress && (
-              <div className="vd-progress" style={{width:"100%",maxWidth:680}}>
-                <div className="vd-extracting">
-                  <div className="vd-spark">
-                    <svg viewBox="0 0 80 80" fill="none">
-                      <path d="M40 8 L46 36 L72 40 L46 44 L40 72 L34 44 L8 40 L34 36 Z" fill="#E8521A"/>
-                      <path d="M60 20 L63 30 L72 33 L63 36 L60 46 L57 36 L48 33 L57 30 Z" fill="rgba(232,82,26,0.5)"/>
-                      <circle cx="22" cy="22" r="3" fill="rgba(232,82,26,0.35)"/>
-                    </svg>
-                  </div>
-                  <div className="vd-extracting-label">Extracting…</div>
-                  <div className="vd-extracting-sub">{progress.label} — this may take a while</div>
-                </div>
-                <div className="vd-prog-steps">
-                  {stages.slice(0,-1).map((s,i) => {
-                    const done = i < currentStageIdx;
-                    const active = i === currentStageIdx;
-                    return (
-                      <div key={s} className={`vd-prog-step${done?" is-done":active?" is-active":""}`}>
-                        <div className="vd-prog-dot">{done?"✓":i+1}</div>
-                        <span>{stageLabel[s]}</span>
-                      </div>
-                    );
-                  })}
-                  <div className="vd-prog-bar-wrap">
-                    <div className="vd-prog-bar" style={{width: progress.total ? `${Math.round((progress.done/progress.total)*100)}%` : "5%"}} />
-                  </div>
-                </div>
+            {/* Error */}
+            {error && (
+              <div className="vd-error">
+                {I.warn}
+                <div><strong>Error:</strong> {error}</div>
               </div>
             )}
 
-            {/* go */}
-            {!running && (
-              <div className="vd-go-wrap">
-                <button className="vd-go" disabled={!canStart} onClick={start}>
-                  Start marking
-                </button>
-              </div>
-            )}
+            {/* CTA */}
+            <div className="vd-cta-row">
+              <button className="vd-go" disabled={!canStart} onClick={start}>
+                {I.spark}
+                {canStart ? "Start Marking" : "Upload both files to begin"}
+              </button>
+            </div>
+
+            {/* How it works */}
+            <div style={{width:"100%",maxWidth:720,marginTop:32,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              {[
+                {icon:"📄",title:"Upload",desc:"Question paper + answer booklet"},
+                {icon:"🔍",title:"Extract",desc:"AI reads every question & answer"},
+                {icon:"🔗",title:"Map",desc:"Answers matched to questions"},
+                {icon:"✅",title:"Grade",desc:"Marks, feedback & summary"},
+              ].map(s=>(
+                <div key={s.title} style={{background:"var(--white)",border:"1px solid var(--rule)",borderRadius:"var(--r-md)",padding:"16px 14px",textAlign:"center"}}>
+                  <div style={{fontSize:24,marginBottom:8}}>{s.icon}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",marginBottom:4}}>{s.title}</div>
+                  <div style={{fontSize:11,color:"var(--ink-4)",lineHeight:1.4}}>{s.desc}</div>
+                </div>
+              ))}
+            </div>
+
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

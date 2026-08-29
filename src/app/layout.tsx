@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Marking Desk — question paper and answer sheet, side by side",
-  description:
-    "Upload a question paper and a handwritten answer booklet. See which question was answered, exactly where, and what was left out.",
+  title: "VedaAI — AI Marking Desk",
+  description: "Upload a question paper and answer booklet. AI extracts every question, maps every handwritten answer, and highlights the exact region on the sheet.",
 };
 
 const FONTS =
-  "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap";
+  "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&display=swap";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

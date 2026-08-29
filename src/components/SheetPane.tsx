@@ -3,9 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { mergeRegions } from "@/lib/mapping";
 import type { AnswerBlock, PageImage, Region } from "@/lib/types";
 
-function hasRealText(b: AnswerBlock) {
-  return b.text.trim().replace(/\u200b/g, "").length > 0;
-}
+const isReal = (b: AnswerBlock) => b.text.replace(/\u200b/g,"").trim().length > 0;
 
 export default function SheetPane(props: {
   pages: PageImage[];
@@ -18,7 +16,17 @@ export default function SheetPane(props: {
   const activeSet = new Set(props.activeBlockIds);
   const anchor = useRef<HTMLDivElement | null>(null);
   const [zoom, setZoom] = useState(100);
-  const [currentPage, setCurrentPage] = useState(0);
+  const [page, setPage] = useState(0);
+
+  const total = props.pages.length;
+
+  useEffect(() => {
+    if (props.activeBlockIds.length) {
+      const first = props.blocks.find(b => activeSet.has(b.id));
+      if (first !== undefined) setPage(first.page);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.activeBlockIds]);
 
   useEffect(() => {
     if (props.activeBlockIds.length && anchor.current) {
@@ -26,109 +34,104 @@ export default function SheetPane(props: {
     }
   }, [props.activeBlockIds]);
 
-  // Jump to the page of the first active block
-  useEffect(() => {
-    if (props.activeBlockIds.length) {
-      const first = props.blocks.find(b => activeSet.has(b.id));
-      if (first) setCurrentPage(first.page);
-    }
-  }, [props.activeBlockIds]);
-
   const activeRegions: Region[] = mergeRegions(
     props.blocks.filter(b => activeSet.has(b.id)).map(b => b.region),
   );
 
-  const totalPages = props.pages.length;
+  const curPage = props.pages[page];
 
   return (
     <div className="vd-sheet-pane">
-      {/* header bar */}
+      {/* Toolbar */}
       <div className="vd-sheet-bar">
-        <span className="vd-sheet-title">Answer Sheet</span>
+        <span className="vd-sheet-ttl">Answer Sheet</span>
 
-        {props.activeLabel && (
+        {props.activeLabel ? (
           <>
-            <span style={{color:"var(--orange)",fontWeight:600}}>Q{props.activeLabel}</span>
-            <button className="vd-clear" onClick={props.onClear}>Show all</button>
+            <span className="vd-sheet-active-tag">Q{props.activeLabel}</span>
+            <button className="vd-sheet-clear" onClick={props.onClear}>× Clear</button>
           </>
+        ) : (
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>Click a question to highlight its answer</span>
         )}
 
-        {/* zoom */}
-        <div className="vd-zoom-group">
-          <button className="vd-zoom-btn" onClick={() => setZoom(z => Math.max(50, z - 25))}>−</button>
-          <span className="vd-zoom-val">{zoom}%</span>
-          <button className="vd-zoom-btn" onClick={() => setZoom(z => Math.min(200, z + 25))}>+</button>
-        </div>
-
-        {/* page nav */}
-        {totalPages > 1 && (
-          <div className="vd-page-nav">
-            <button className="vd-page-nav-btn" onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>‹</button>
-            <span>Page {currentPage + 1} of {totalPages}</span>
-            <button className="vd-page-nav-btn" onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage === totalPages - 1}>›</button>
+        <div className="vd-sheet-controls">
+          {/* Zoom */}
+          <div className="vd-ctrl-group">
+            <button className="vd-ctrl-btn" onClick={() => setZoom(z => Math.max(50,z-25))}>−</button>
+            <span className="vd-ctrl-val">{zoom}%</span>
+            <button className="vd-ctrl-btn" onClick={() => setZoom(z => Math.min(200,z+25))}>+</button>
           </div>
-        )}
+
+          {/* Page nav */}
+          {total > 1 && (
+            <div className="vd-page-nav">
+              <button className="vd-page-nav-btn" onClick={() => setPage(p=>Math.max(0,p-1))} disabled={page===0}>‹</button>
+              <span>Page {page+1} of {total}</span>
+              <button className="vd-page-nav-btn" onClick={() => setPage(p=>Math.min(total-1,p+1))} disabled={page===total-1}>›</button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* pages */}
+      {/* Pages */}
       <div className="vd-pages">
-        {props.pages.map(page => {
-          const pageBlocks = props.blocks.filter(b => b.page === page.index && hasRealText(b));
-          const pageActive = activeRegions.filter(r => r.page === page.index);
-          const idle = pageBlocks.filter(b => !activeSet.has(b.id));
-          const isCurrentPage = page.index === currentPage || totalPages === 1;
+        {curPage ? (
+          <div className="vd-page" style={{width:`${zoom}%`,maxWidth:860}}>
+            {/* Spine */}
+            <div className="vd-spine">
+              {props.blocks
+                .filter(b => b.page === curPage.index && isReal(b))
+                .map(b => (
+                  <span key={b.id}
+                    className={`vd-spine-mark${activeSet.has(b.id)?" is-active":""}${b.label?"":" is-orphan"}`}
+                    style={{top:`${b.region.rect.y}%`,height:`${b.region.rect.h}%`}}
+                    title={b.label?`Q${b.label}`:"Unlabelled"}>
+                    {b.label??"?"}
+                  </span>
+                ))
+              }
+            </div>
 
-          if (!isCurrentPage && totalPages > 1) return null;
+            {/* Canvas */}
+            <div className="vd-canvas">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={curPage.dataUrl} alt={`Answer sheet page ${curPage.index+1}`}/>
 
-          return (
-            <div className="vd-page" key={page.index} style={{ width: `${zoom}%`, maxWidth: 820 }}>
-              <div className="vd-spine">
-                {pageBlocks.map(b => {
-                  const on = activeSet.has(b.id);
-                  return (
-                    <span key={b.id}
-                      className={`vd-spine-mark${on ? " is-active" : ""}${b.label ? "" : " is-orphan"}`}
-                      style={{ top: `${b.region.rect.y}%`, height: `${b.region.rect.h}%` }}
-                      title={b.label ? `Answer ${b.label}` : "Unlabelled"}>
-                      {b.label ?? "?"}
-                    </span>
-                  );
-                })}
-              </div>
-
-              <div className="vd-canvas">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={page.dataUrl} alt={`Page ${page.index + 1}`} />
-
-                {idle.map(b => (
+              {/* Idle click targets */}
+              {props.blocks
+                .filter(b => b.page===curPage.index && isReal(b) && !activeSet.has(b.id))
+                .map(b => (
                   <button key={b.id} className="vd-region is-idle"
-                    style={{ left:`${b.region.rect.x}%`, top:`${b.region.rect.y}%`, width:`${b.region.rect.w}%`, height:`${b.region.rect.h}%` }}
-                    onClick={() => props.onSelectBlock(b.id)}
-                    aria-label={`Answer block page ${page.index + 1}`} />
-                ))}
+                    style={{left:`${b.region.rect.x}%`,top:`${b.region.rect.y}%`,width:`${b.region.rect.w}%`,height:`${b.region.rect.h}%`}}
+                    onClick={()=>props.onSelectBlock(b.id)}
+                    aria-label={`Answer block page ${curPage.index+1}`}/>
+                ))
+              }
 
-                {props.activeBlockIds.length > 0 && <div className="vd-veil" />}
+              {/* Veil + highlights */}
+              {props.activeBlockIds.length > 0 && <div className="vd-veil"/>}
 
-                {pageActive.map((r, i) => (
-                  <div key={`${page.index}-${i}`} className="vd-region is-active"
-                    ref={i === 0 && page.index === (activeRegions[0]?.page ?? -1) ? anchor : undefined}
-                    style={{ left:`${r.rect.x}%`, top:`${r.rect.y}%`, width:`${r.rect.w}%`, height:`${r.rect.h}%` }}>
+              {activeRegions
+                .filter(r => r.page === curPage.index)
+                .map((r,i) => (
+                  <div key={i} className="vd-region is-active"
+                    ref={i===0?anchor:undefined}
+                    style={{left:`${r.rect.x}%`,top:`${r.rect.y}%`,width:`${r.rect.w}%`,height:`${r.rect.h}%`}}>
                     {props.activeLabel && (
                       <span className="vd-region-tag">
-                        Q{props.activeLabel}{activeRegions.length > 1 ? ` · ${i+1}/${activeRegions.length}` : ""}
+                        Q{props.activeLabel}{activeRegions.filter(x=>x.page===curPage.index).length>1?` · ${i+1}`:``}
                       </span>
                     )}
                   </div>
-                ))}
+                ))
+              }
 
-                <span className="vd-page-no">page {page.index + 1}</span>
-              </div>
+              <span className="vd-page-no">p.{curPage.index+1}</span>
             </div>
-          );
-        })}
-
-        {props.pages.length === 0 && (
-          <div className="vd-empty">No answer sheet pages loaded.</div>
+          </div>
+        ) : (
+          <div className="vd-empty">No pages loaded</div>
         )}
       </div>
     </div>
